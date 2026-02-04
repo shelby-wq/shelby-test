@@ -190,13 +190,74 @@ section {
     overflow-y: auto;
 }
 
+/* Account grouping */
+.account-group {
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.account-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.account-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.account-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: white;
+}
+
+.account-name {
+    font-weight: 500;
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+.account-progress {
+    font-size: 0.8rem;
+    color: #888;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.account-items {
+    padding: 10px;
+}
+
 .action-item {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-    padding: 15px;
-    margin-bottom: 12px;
+    padding: 12px 15px;
+    margin-bottom: 8px;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.action-item:last-child {
+    margin-bottom: 0;
 }
 
 .action-item:hover {
@@ -204,11 +265,86 @@ section {
     border-color: rgba(102, 126, 234, 0.3);
 }
 
+.action-item.completed {
+    opacity: 0.6;
+}
+
+.action-item.completed .action-item-text {
+    text-decoration: line-through;
+    color: #888;
+}
+
+/* Custom checkbox */
+.checkbox-container {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+}
+
+.checkbox-container input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 22px;
+    width: 22px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.checkbox-container:hover .checkmark {
+    border-color: #667eea;
+}
+
+.checkbox-container input:checked ~ .checkmark {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
+}
+
+.checkmark:after {
+    content: "";
+    position: absolute;
+    display: none;
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+    display: block;
+}
+
+.checkbox-container .checkmark:after {
+    left: 7px;
+    top: 3px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.action-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
 .action-item-text {
     font-size: 0.95rem;
     line-height: 1.5;
     color: #e0e0e0;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    transition: all 0.2s ease;
 }
 
 .action-item-source {

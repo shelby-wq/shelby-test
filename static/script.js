@@ -2,6 +2,72 @@
 
 let emailsData = [];
 
+// Local storage key for completed items
+const COMPLETED_ITEMS_KEY = 'geminiNotes_completedItems';
+
+// Get completed items from local storage
+function getCompletedItems() {
+    const stored = localStorage.getItem(COMPLETED_ITEMS_KEY);
+    return stored ? JSON.parse(stored) : {};
+}
+
+// Save completed items to local storage
+function saveCompletedItems(items) {
+    localStorage.setItem(COMPLETED_ITEMS_KEY, JSON.stringify(items));
+}
+
+// Toggle action item completion
+function toggleActionItem(itemId) {
+    const completedItems = getCompletedItems();
+    if (completedItems[itemId]) {
+        delete completedItems[itemId];
+    } else {
+        completedItems[itemId] = true;
+    }
+    saveCompletedItems(completedItems);
+    updateActionItemUI(itemId, completedItems[itemId]);
+    updateProgressCounts();
+}
+
+// Update UI for a single action item
+function updateActionItemUI(itemId, isCompleted) {
+    const checkbox = document.querySelector(`input[data-item-id="${itemId}"]`);
+    const actionItem = checkbox?.closest('.action-item');
+    if (checkbox) {
+        checkbox.checked = isCompleted;
+    }
+    if (actionItem) {
+        actionItem.classList.toggle('completed', isCompleted);
+    }
+}
+
+// Update progress counts for each account
+function updateProgressCounts() {
+    const completedItems = getCompletedItems();
+    const accountGroups = document.querySelectorAll('.account-group');
+
+    accountGroups.forEach(group => {
+        const items = group.querySelectorAll('.action-item');
+        const completedCount = Array.from(items).filter(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            return checkbox?.checked;
+        }).length;
+
+        const progressSpan = group.querySelector('.account-progress');
+        if (progressSpan) {
+            progressSpan.textContent = `${completedCount}/${items.length} done`;
+        }
+    });
+
+    // Update total count
+    const totalItems = document.querySelectorAll('.action-item').length;
+    const totalCompleted = Object.keys(completedItems).length;
+    const countBadge = document.getElementById('action-count');
+    if (countBadge) {
+        countBadge.textContent = `${totalCompleted}/${totalItems}`;
+    }
+}
+
 // Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     const refreshBtn = document.getElementById('refresh-btn');
@@ -52,8 +118,8 @@ async function fetchEmails() {
         // Render emails
         sortAndRenderEmails(warningHtml);
 
-        // Render action items
-        renderActionItems(emailsData);
+        // Render action items grouped by account
+        renderActionItemsByAccount(emailsData);
 
     } catch (error) {
         emailsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
@@ -119,30 +185,80 @@ function sortAndRenderEmails(warningHtml = '') {
     container.innerHTML = warningHtml + emailsHtml;
 }
 
-// Render action items
-function renderActionItems(emails) {
+// Extract account name from email address
+function extractAccountName(sender) {
+    // Try to get the name part before the email
+    const nameMatch = sender.match(/^([^<]+)</);
+    if (nameMatch) {
+        return nameMatch[1].trim().replace(/"/g, '');
+    }
+    // Try to get just the email
+    const emailMatch = sender.match(/<([^>]+)>/) || sender.match(/([^\s]+@[^\s]+)/);
+    if (emailMatch) {
+        return emailMatch[1];
+    }
+    return sender || 'Unknown';
+}
+
+// Generate unique ID for action item
+function generateItemId(emailId, itemText) {
+    return `${emailId}_${hashCode(itemText)}`;
+}
+
+// Simple hash function for generating IDs
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+}
+
+// Render action items grouped by account
+function renderActionItemsByAccount(emails) {
     const container = document.getElementById('action-items-container');
     const countBadge = document.getElementById('action-count');
+    const completedItems = getCompletedItems();
 
-    // Collect all action items
-    const allActionItems = [];
+    // Group action items by account
+    const accountGroups = {};
+    let totalItems = 0;
+
     emails.forEach(email => {
+        const accountName = extractAccountName(email.sender);
+
+        if (!accountGroups[accountName]) {
+            accountGroups[accountName] = {
+                name: accountName,
+                email: email.sender,
+                items: []
+            };
+        }
+
         email.action_items.forEach(item => {
-            allActionItems.push({
+            const itemId = generateItemId(email.id, item.text);
+            accountGroups[accountName].items.push({
+                id: itemId,
                 text: item.text,
                 sourceSubject: email.subject,
                 sourceDate: email.date,
-                emailId: email.id
+                emailId: email.id,
+                completed: !!completedItems[itemId]
             });
+            totalItems++;
         });
     });
 
-    // Update count
+    // Update count badge
+    const completedCount = Object.keys(completedItems).length;
     if (countBadge) {
-        countBadge.textContent = allActionItems.length;
+        countBadge.textContent = `${completedCount}/${totalItems}`;
     }
 
-    if (allActionItems.length === 0) {
+    // Check if no action items
+    if (totalItems === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <p>No action items found.</p>
@@ -152,16 +268,46 @@ function renderActionItems(emails) {
         return;
     }
 
-    const actionItemsHtml = allActionItems.map((item, index) => `
-        <div class="action-item" data-email-id="${item.emailId}">
-            <div class="action-item-text">${escapeHtml(item.text)}</div>
-            <div class="action-item-source">
-                ${escapeHtml(truncate(item.sourceSubject, 40))} - ${item.sourceDate}
-            </div>
-        </div>
-    `).join('');
+    // Sort accounts by number of items (descending)
+    const sortedAccounts = Object.values(accountGroups).sort((a, b) => b.items.length - a.items.length);
 
-    container.innerHTML = actionItemsHtml;
+    // Render grouped action items
+    const html = sortedAccounts.map(account => {
+        const completedInGroup = account.items.filter(item => item.completed).length;
+
+        return `
+            <div class="account-group">
+                <div class="account-header">
+                    <div class="account-info">
+                        <span class="account-avatar">${account.name.charAt(0).toUpperCase()}</span>
+                        <span class="account-name">${escapeHtml(account.name)}</span>
+                    </div>
+                    <span class="account-progress">${completedInGroup}/${account.items.length} done</span>
+                </div>
+                <div class="account-items">
+                    ${account.items.map(item => `
+                        <div class="action-item ${item.completed ? 'completed' : ''}" data-item-id="${item.id}">
+                            <label class="checkbox-container">
+                                <input type="checkbox"
+                                    data-item-id="${item.id}"
+                                    ${item.completed ? 'checked' : ''}
+                                    onchange="toggleActionItem('${item.id}')">
+                                <span class="checkmark"></span>
+                            </label>
+                            <div class="action-item-content">
+                                <div class="action-item-text">${escapeHtml(item.text)}</div>
+                                <div class="action-item-source">
+                                    ${escapeHtml(truncate(item.sourceSubject, 40))} - ${item.sourceDate}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
 }
 
 // Utility: Escape HTML to prevent XSS
