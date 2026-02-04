@@ -185,19 +185,21 @@ function sortAndRenderEmails(warningHtml = '') {
     container.innerHTML = warningHtml + emailsHtml;
 }
 
-// Extract account name from email address
-function extractAccountName(sender) {
-    // Try to get the name part before the email
-    const nameMatch = sender.match(/^([^<]+)</);
-    if (nameMatch) {
-        return nameMatch[1].trim().replace(/"/g, '');
+// Extract meeting title from email subject
+// e.g., 'Notes: "MWC / Shelby" Feb 4, 2026' -> 'MWC / Shelby'
+function extractMeetingTitle(subject) {
+    // Try to extract title from quotes
+    const quoteMatch = subject.match(/[""]([^""]+)[""]/);
+    if (quoteMatch) {
+        return quoteMatch[1].trim();
     }
-    // Try to get just the email
-    const emailMatch = sender.match(/<([^>]+)>/) || sender.match(/([^\s]+@[^\s]+)/);
-    if (emailMatch) {
-        return emailMatch[1];
+    // Try to extract from "Notes: X" pattern
+    const notesMatch = subject.match(/Notes:\s*(.+?)(?:\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|\s*$)/i);
+    if (notesMatch) {
+        return notesMatch[1].trim().replace(/^[""]|[""]$/g, '');
     }
-    return sender || 'Unknown';
+    // Fallback to subject
+    return subject || 'Untitled Meeting';
 }
 
 // Generate unique ID for action item
@@ -216,30 +218,30 @@ function hashCode(str) {
     return Math.abs(hash).toString(36);
 }
 
-// Render action items grouped by account
+// Render action items grouped by meeting title
 function renderActionItemsByAccount(emails) {
     const container = document.getElementById('action-items-container');
     const countBadge = document.getElementById('action-count');
     const completedItems = getCompletedItems();
 
-    // Group action items by account
-    const accountGroups = {};
+    // Group action items by meeting title
+    const meetingGroups = {};
     let totalItems = 0;
 
     emails.forEach(email => {
-        const accountName = extractAccountName(email.sender);
+        const meetingTitle = extractMeetingTitle(email.subject);
 
-        if (!accountGroups[accountName]) {
-            accountGroups[accountName] = {
-                name: accountName,
-                email: email.sender,
+        if (!meetingGroups[meetingTitle]) {
+            meetingGroups[meetingTitle] = {
+                name: meetingTitle,
+                date: email.date,
                 items: []
             };
         }
 
         email.action_items.forEach(item => {
             const itemId = generateItemId(email.id, item.text);
-            accountGroups[accountName].items.push({
+            meetingGroups[meetingTitle].items.push({
                 id: itemId,
                 text: item.text,
                 sourceSubject: email.subject,
@@ -268,24 +270,24 @@ function renderActionItemsByAccount(emails) {
         return;
     }
 
-    // Sort accounts by number of items (descending)
-    const sortedAccounts = Object.values(accountGroups).sort((a, b) => b.items.length - a.items.length);
+    // Sort meetings by number of items (descending)
+    const sortedMeetings = Object.values(meetingGroups).sort((a, b) => b.items.length - a.items.length);
 
     // Render grouped action items
-    const html = sortedAccounts.map(account => {
-        const completedInGroup = account.items.filter(item => item.completed).length;
+    const html = sortedMeetings.map(meeting => {
+        const completedInGroup = meeting.items.filter(item => item.completed).length;
 
         return `
             <div class="account-group">
                 <div class="account-header">
                     <div class="account-info">
-                        <span class="account-avatar">${account.name.charAt(0).toUpperCase()}</span>
-                        <span class="account-name">${escapeHtml(account.name)}</span>
+                        <span class="account-avatar">${meeting.name.charAt(0).toUpperCase()}</span>
+                        <span class="account-name">${escapeHtml(meeting.name)}</span>
                     </div>
-                    <span class="account-progress">${completedInGroup}/${account.items.length} done</span>
+                    <span class="account-progress">${completedInGroup}/${meeting.items.length} done</span>
                 </div>
                 <div class="account-items">
-                    ${account.items.map(item => `
+                    ${meeting.items.map(item => `
                         <div class="action-item ${item.completed ? 'completed' : ''}" data-item-id="${item.id}">
                             <label class="checkbox-container">
                                 <input type="checkbox"
@@ -297,7 +299,7 @@ function renderActionItemsByAccount(emails) {
                             <div class="action-item-content">
                                 <div class="action-item-text">${escapeHtml(item.text)}</div>
                                 <div class="action-item-source">
-                                    ${escapeHtml(truncate(item.sourceSubject, 40))} - ${item.sourceDate}
+                                    ${item.sourceDate}
                                 </div>
                             </div>
                         </div>
