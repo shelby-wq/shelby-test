@@ -86,51 +86,60 @@ def decode_email_body(payload):
 
 
 def extract_action_items(body, subject):
-    """Extract action items from email body using pattern matching."""
+    """Extract action items from Gemini Notes 'Suggested next steps' section."""
     action_items = []
 
-    # Common patterns for action items
-    patterns = [
-        r'(?:^|\n)\s*[-•*]\s*(?:TODO|Action|Task|Follow.?up|Need to|Must|Should|Please|Remember to)[:\s]*(.+?)(?=\n|$)',
-        r'(?:^|\n)\s*\d+[.)]\s*(.+?)(?=\n|$)',
-        r'(?:^|\n)\s*\[\s*\]\s*(.+?)(?=\n|$)',
-        r'(?:^|\n)\s*(?:ACTION ITEM|ACTION|TODO|TASK)[:\s]*(.+?)(?=\n|$)',
-        r'(?:^|\n)\s*[-•*]\s*(.+?)(?=\n|$)',
+    # First, try to find the "Suggested next steps" section
+    # Look for the section header and extract items after it
+    next_steps_patterns = [
+        r'Suggested next steps\s*\n(.*?)(?=\n\n|\Z)',
+        r'Suggested next steps\s*:?\s*(.*?)(?=\n\n[A-Z]|\Z)',
+        r'Next steps\s*\n(.*?)(?=\n\n|\Z)',
     ]
 
-    # Try each pattern
-    for pattern in patterns:
-        matches = re.findall(pattern, body, re.IGNORECASE | re.MULTILINE)
-        for match in matches:
-            item = match.strip()
-            if item and len(item) > 5 and len(item) < 500:
+    next_steps_section = None
+    for pattern in next_steps_patterns:
+        match = re.search(pattern, body, re.IGNORECASE | re.DOTALL)
+        if match:
+            next_steps_section = match.group(1)
+            break
+
+    if next_steps_section:
+        # Extract items that start with arrows or bullet points
+        # Common markers: →, -, •, *, >, etc.
+        item_patterns = [
+            r'[→➜➔⟶►▶>]\s*(.+?)(?=\n[→➜➔⟶►▶>\-•*]|\n\n|\Z)',
+            r'^\s*[\-•*]\s*(.+?)(?=\n[\-•*]|\n\n|\Z)',
+        ]
+
+        for pattern in item_patterns:
+            matches = re.findall(pattern, next_steps_section, re.MULTILINE | re.DOTALL)
+            for match in matches:
+                item = match.strip()
                 # Clean up the item
                 item = re.sub(r'<[^>]+>', '', item)  # Remove HTML tags
                 item = re.sub(r'\s+', ' ', item).strip()
-                if item and item not in [ai['text'] for ai in action_items]:
+                if item and len(item) > 10 and len(item) < 1000:
+                    if item not in [ai['text'] for ai in action_items]:
+                        action_items.append({
+                            'text': item,
+                            'source_subject': subject
+                        })
+
+    # If no items found in "Suggested next steps", try alternative patterns
+    if not action_items:
+        # Look for arrow-prefixed items anywhere in the body
+        arrow_items = re.findall(r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶]|\n\n|\Z)', body, re.DOTALL)
+        for item in arrow_items:
+            item = item.strip()
+            item = re.sub(r'<[^>]+>', '', item)
+            item = re.sub(r'\s+', ' ', item).strip()
+            if item and len(item) > 10 and len(item) < 1000:
+                if item not in [ai['text'] for ai in action_items]:
                     action_items.append({
                         'text': item,
                         'source_subject': subject
                     })
-
-    # If no action items found, try to extract key sentences
-    if not action_items:
-        sentences = re.split(r'[.!?]\s+', body)
-        action_keywords = ['need', 'must', 'should', 'will', 'please', 'deadline', 'by', 'complete', 'finish', 'submit', 'send', 'review', 'update', 'create', 'schedule', 'call', 'meeting', 'follow']
-
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if any(keyword in sentence.lower() for keyword in action_keywords):
-                if len(sentence) > 10 and len(sentence) < 300:
-                    clean = re.sub(r'<[^>]+>', '', sentence)
-                    clean = re.sub(r'\s+', ' ', clean).strip()
-                    if clean:
-                        action_items.append({
-                            'text': clean,
-                            'source_subject': subject
-                        })
-                        if len(action_items) >= 3:  # Limit to 3 inferred items per email
-                            break
 
     return action_items
 
