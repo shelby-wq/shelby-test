@@ -102,6 +102,8 @@ def extract_action_items(body, subject):
         'learn more',
         'was this helpful',
         'rate this',
+        'notes by gemini',
+        'open meeting notes',
     ]
 
     def is_valid_action_item(text):
@@ -115,54 +117,89 @@ def extract_action_items(body, subject):
             return False
         return True
 
+    def clean_html(html_text):
+        """Convert HTML to clean text while preserving structure."""
+        # Replace common block elements with newlines
+        text = re.sub(r'<br\s*/?>', '\n', html_text, flags=re.IGNORECASE)
+        text = re.sub(r'</?(div|p|tr|li|h[1-6])[^>]*>', '\n', text, flags=re.IGNORECASE)
+        # Remove all other HTML tags
+        text = re.sub(r'<[^>]+>', ' ', text)
+        # Decode HTML entities
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&amp;', '&')
+        text = text.replace('&lt;', '<')
+        text = text.replace('&gt;', '>')
+        text = text.replace('&quot;', '"')
+        text = text.replace('&#39;', "'")
+        text = text.replace('&rarr;', '→')
+        text = text.replace('&#8594;', '→')
+        # Normalize whitespace
+        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        return text.strip()
+
+    # Clean the HTML body first
+    clean_body = clean_html(body)
+
     # First, try to find the "Suggested next steps" section
-    # Look for the section header and extract items after it
+    # Look for the section header and extract content after it
     next_steps_patterns = [
-        r'Suggested next steps\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
-        r'Suggested next steps\s*:?\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
-        r'Next steps\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
-        r'Suggested next steps(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
+        r'Suggested next steps\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
+        r'Suggested next steps\s*:?\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
+        r'Next steps\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
     ]
 
     next_steps_section = None
     for pattern in next_steps_patterns:
-        match = re.search(pattern, body, re.IGNORECASE | re.DOTALL)
+        match = re.search(pattern, clean_body, re.IGNORECASE | re.DOTALL)
         if match:
-            next_steps_section = match.group(1)
-            break
+            next_steps_section = match.group(1).strip()
+            if len(next_steps_section) > 10:  # Make sure we got meaningful content
+                break
+            next_steps_section = None
 
     if next_steps_section:
         # Extract items that start with arrows or bullet points
-        # Common markers: →, -, •, *, >, etc.
-        item_patterns = [
-            r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶\-•*]|\n\n|\Z)',
-            r'^\s*[\-•*]\s*(.+?)(?=\n[\-•*]|\n\n|\Z)',
-        ]
+        # Common markers: →, -, •, *, etc.
+        # Split by line and look for items starting with arrow
+        lines = next_steps_section.split('\n')
+        current_item = ""
 
-        for pattern in item_patterns:
-            matches = re.findall(pattern, next_steps_section, re.MULTILINE | re.DOTALL)
-            for match in matches:
-                item = match.strip()
-                # Clean up the item
-                item = re.sub(r'<[^>]+>', '', item)  # Remove HTML tags
-                item = re.sub(r'\s+', ' ', item).strip()
-                if is_valid_action_item(item):
-                    if item not in [ai['text'] for ai in action_items]:
+        for line in lines:
+            line = line.strip()
+            # Check if line starts with an arrow or bullet
+            if re.match(r'^[→➜➔⟶►▶\-•*]\s*', line):
+                # Save previous item if exists
+                if current_item and is_valid_action_item(current_item):
+                    if current_item not in [ai['text'] for ai in action_items]:
                         action_items.append({
-                            'text': item,
+                            'text': current_item,
                             'source_subject': subject
                         })
+                # Start new item
+                current_item = re.sub(r'^[→➜➔⟶►▶\-•*]\s*', '', line).strip()
+            elif current_item and line:
+                # Continuation of previous item
+                current_item += ' ' + line
 
-    # If no items found in "Suggested next steps", try looking for arrow items
-    # but ONLY within the first 80% of the email body (exclude footer area)
+        # Don't forget the last item
+        if current_item and is_valid_action_item(current_item):
+            if current_item not in [ai['text'] for ai in action_items]:
+                action_items.append({
+                    'text': current_item,
+                    'source_subject': subject
+                })
+
+    # If no items found, try looking for arrow items anywhere in the body
+    # but ONLY within the first 80% (exclude footer area)
     if not action_items:
-        body_length = len(body)
-        main_body = body[:int(body_length * 0.8)]  # Exclude last 20% (footer area)
+        body_length = len(clean_body)
+        main_body = clean_body[:int(body_length * 0.8)]
 
-        arrow_items = re.findall(r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶]|\n\n|\Z)', main_body, re.DOTALL)
-        for item in arrow_items:
+        # Find all lines with arrow markers
+        arrow_lines = re.findall(r'[→➜➔⟶►▶]\s*(.+?)(?=\n|$)', main_body)
+        for item in arrow_lines:
             item = item.strip()
-            item = re.sub(r'<[^>]+>', '', item)
             item = re.sub(r'\s+', ' ', item).strip()
             if is_valid_action_item(item):
                 if item not in [ai['text'] for ai in action_items]:
