@@ -246,6 +246,15 @@ header h1 {
     color: #fff;
 }
 
+.meeting-card.no-items {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.meeting-card.no-items .meeting-card-progress {
+    color: #ff9800;
+}
+
 /* Action items section full width */
 .action-items-section {
     width: 100%;

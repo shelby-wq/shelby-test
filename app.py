@@ -89,12 +89,39 @@ def extract_action_items(body, subject):
     """Extract action items from Gemini Notes 'Suggested next steps' section."""
     action_items = []
 
+    # Phrases that indicate footer/feedback content to exclude
+    exclude_phrases = [
+        'is the summary section',
+        'is this email helpful',
+        'feedback',
+        'unsubscribe',
+        'privacy policy',
+        'terms of service',
+        'google llc',
+        'click here',
+        'learn more',
+        'was this helpful',
+        'rate this',
+    ]
+
+    def is_valid_action_item(text):
+        """Check if text is a valid action item (not footer/feedback content)."""
+        text_lower = text.lower()
+        for phrase in exclude_phrases:
+            if phrase in text_lower:
+                return False
+        # Must be reasonable length
+        if len(text) < 10 or len(text) > 1000:
+            return False
+        return True
+
     # First, try to find the "Suggested next steps" section
     # Look for the section header and extract items after it
     next_steps_patterns = [
-        r'Suggested next steps\s*\n(.*?)(?=\n\n|\Z)',
-        r'Suggested next steps\s*:?\s*(.*?)(?=\n\n[A-Z]|\Z)',
-        r'Next steps\s*\n(.*?)(?=\n\n|\Z)',
+        r'Suggested next steps\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
+        r'Suggested next steps\s*:?\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
+        r'Next steps\s*\n(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
+        r'Suggested next steps(.*?)(?=\n\n[A-Z]|\n\n\n|\Z)',
     ]
 
     next_steps_section = None
@@ -108,7 +135,7 @@ def extract_action_items(body, subject):
         # Extract items that start with arrows or bullet points
         # Common markers: →, -, •, *, >, etc.
         item_patterns = [
-            r'[→➜➔⟶►▶>]\s*(.+?)(?=\n[→➜➔⟶►▶>\-•*]|\n\n|\Z)',
+            r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶\-•*]|\n\n|\Z)',
             r'^\s*[\-•*]\s*(.+?)(?=\n[\-•*]|\n\n|\Z)',
         ]
 
@@ -119,22 +146,25 @@ def extract_action_items(body, subject):
                 # Clean up the item
                 item = re.sub(r'<[^>]+>', '', item)  # Remove HTML tags
                 item = re.sub(r'\s+', ' ', item).strip()
-                if item and len(item) > 10 and len(item) < 1000:
+                if is_valid_action_item(item):
                     if item not in [ai['text'] for ai in action_items]:
                         action_items.append({
                             'text': item,
                             'source_subject': subject
                         })
 
-    # If no items found in "Suggested next steps", try alternative patterns
+    # If no items found in "Suggested next steps", try looking for arrow items
+    # but ONLY within the first 80% of the email body (exclude footer area)
     if not action_items:
-        # Look for arrow-prefixed items anywhere in the body
-        arrow_items = re.findall(r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶]|\n\n|\Z)', body, re.DOTALL)
+        body_length = len(body)
+        main_body = body[:int(body_length * 0.8)]  # Exclude last 20% (footer area)
+
+        arrow_items = re.findall(r'[→➜➔⟶►▶]\s*(.+?)(?=\n[→➜➔⟶►▶]|\n\n|\Z)', main_body, re.DOTALL)
         for item in arrow_items:
             item = item.strip()
             item = re.sub(r'<[^>]+>', '', item)
             item = re.sub(r'\s+', ' ', item).strip()
-            if item and len(item) > 10 and len(item) < 1000:
+            if is_valid_action_item(item):
                 if item not in [ai['text'] for ai in action_items]:
                     action_items.append({
                         'text': item,

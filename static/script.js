@@ -264,7 +264,10 @@ function renderMeetingCards() {
 
     // Filter meetings based on view mode
     const meetings = Object.values(meetingGroupsData).filter(meeting => {
-        if (meeting.items.length === 0) return false;
+        // Show meetings with 0 items only in todo mode (so user can see all meetings)
+        if (meeting.items.length === 0) {
+            return currentViewMode === 'todo';
+        }
         const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
         const allCompleted = completedCount === meeting.items.length;
 
@@ -292,15 +295,23 @@ function renderMeetingCards() {
         return;
     }
 
-    // Sort meetings by number of items (descending)
-    meetings.sort((a, b) => b.items.length - a.items.length);
+    // Sort meetings by date (newest first), then by number of items (descending)
+    meetings.sort((a, b) => {
+        // First compare by date (newest first)
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        if (dateB - dateA !== 0) return dateB - dateA;
+        // Then by number of items (more items first)
+        return b.items.length - a.items.length;
+    });
 
     const html = meetings.map(meeting => {
         const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
         const isActive = selectedMeeting === meeting.name;
+        const hasItems = meeting.items.length > 0;
 
         return `
-            <div class="meeting-card ${isActive ? 'active' : ''}"
+            <div class="meeting-card ${isActive ? 'active' : ''} ${!hasItems ? 'no-items' : ''}"
                  data-meeting="${escapeHtml(meeting.name)}"
                  onclick="selectMeeting('${escapeAttr(meeting.name)}')">
                 <div class="meeting-card-header">
@@ -308,7 +319,7 @@ function renderMeetingCards() {
                     <div class="meeting-card-title">${escapeHtml(meeting.name)}</div>
                 </div>
                 <div class="meeting-card-footer">
-                    <span class="meeting-card-progress">${completedCount}/${meeting.items.length} done</span>
+                    <span class="meeting-card-progress">${hasItems ? `${completedCount}/${meeting.items.length} done` : 'No action items'}</span>
                     <span class="meeting-card-count">${meeting.items.length} items</span>
                 </div>
             </div>
