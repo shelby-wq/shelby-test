@@ -31,10 +31,16 @@
         </div>
         {% else %}
         <div class="dashboard-content">
+            <!-- View Toggle -->
+            <div class="view-toggle">
+                <button id="todo-btn" class="toggle-btn active" onclick="setViewMode('todo')">To-Do</button>
+                <button id="completed-btn" class="toggle-btn" onclick="setViewMode('completed')">Completed</button>
+            </div>
+
             <!-- Meeting Cards Row -->
             <section class="meeting-cards-section">
                 <div class="section-header">
-                    <h2>Meetings</h2>
+                    <h2 id="meetings-title">Meetings</h2>
                     <span class="badge" id="meeting-count">0</span>
                 </div>
                 <div class="meeting-cards-row" id="meeting-cards-container">

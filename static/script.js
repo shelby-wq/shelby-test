@@ -3,6 +3,7 @@
 let emailsData = [];
 let meetingGroupsData = {};
 let selectedMeeting = null;
+let currentViewMode = 'todo'; // 'todo' or 'completed'
 
 // Local storage key for completed items
 const COMPLETED_ITEMS_KEY = 'geminiNotes_completedItems';
@@ -16,6 +17,36 @@ function getCompletedItems() {
 // Save completed items to local storage
 function saveCompletedItems(items) {
     localStorage.setItem(COMPLETED_ITEMS_KEY, JSON.stringify(items));
+}
+
+// Set view mode (todo or completed)
+function setViewMode(mode) {
+    currentViewMode = mode;
+    selectedMeeting = null;
+
+    // Update toggle button states
+    document.getElementById('todo-btn').classList.toggle('active', mode === 'todo');
+    document.getElementById('completed-btn').classList.toggle('active', mode === 'completed');
+
+    // Update meetings title
+    const meetingsTitle = document.getElementById('meetings-title');
+    if (meetingsTitle) {
+        meetingsTitle.textContent = mode === 'todo' ? 'Meetings' : 'Completed Meetings';
+    }
+
+    // Re-render meeting cards
+    renderMeetingCards();
+
+    // Reset action items section
+    const titleEl = document.getElementById('selected-meeting-title');
+    const countBadge = document.getElementById('action-count');
+    const actionContainer = document.getElementById('action-items-container');
+
+    if (titleEl) titleEl.textContent = 'Select a meeting above';
+    if (countBadge) countBadge.style.display = 'none';
+    if (actionContainer) {
+        actionContainer.innerHTML = '<div class="empty-state"><p>Click on a meeting card above to view its action items.</p></div>';
+    }
 }
 
 // Toggle action item completion
@@ -54,7 +85,7 @@ function updateActionItemUI(itemId, isCompleted) {
     }
 }
 
-// Update meeting card progress display and hide completed meetings
+// Update meeting card progress display and handle view transitions
 function updateMeetingCardProgress() {
     const completedItems = getCompletedItems();
 
@@ -65,8 +96,12 @@ function updateMeetingCardProgress() {
 
         const card = document.querySelector(`.meeting-card[data-meeting="${CSS.escape(meetingName)}"]`);
         if (card) {
-            if (allCompleted) {
-                // Fade out and remove the card
+            // In todo mode, hide completed meetings
+            // In completed mode, hide incomplete meetings
+            const shouldHide = (currentViewMode === 'todo' && allCompleted) ||
+                              (currentViewMode === 'completed' && !allCompleted);
+
+            if (shouldHide) {
                 card.style.transition = 'all 0.3s ease';
                 card.style.opacity = '0';
                 card.style.transform = 'scale(0.9)';
@@ -74,18 +109,24 @@ function updateMeetingCardProgress() {
                     card.remove();
                     updateMeetingCount();
 
-                    // If this was the selected meeting, clear the selection
                     if (selectedMeeting === meetingName) {
                         selectedMeeting = null;
                         const titleEl = document.getElementById('selected-meeting-title');
                         const countBadge = document.getElementById('action-count');
                         const actionContainer = document.getElementById('action-items-container');
 
-                        if (titleEl) titleEl.textContent = 'All done! Select another meeting';
-                        if (countBadge) countBadge.style.display = 'none';
-                        if (actionContainer) {
-                            actionContainer.innerHTML = '<div class="empty-state"><p>Great job! All action items completed for this meeting.</p></div>';
+                        if (currentViewMode === 'todo') {
+                            if (titleEl) titleEl.textContent = 'All done! Select another meeting';
+                            if (actionContainer) {
+                                actionContainer.innerHTML = '<div class="empty-state"><p>Great job! All action items completed for this meeting.</p></div>';
+                            }
+                        } else {
+                            if (titleEl) titleEl.textContent = 'Select a meeting above';
+                            if (actionContainer) {
+                                actionContainer.innerHTML = '<div class="empty-state"><p>Click on a meeting card above to view its action items.</p></div>';
+                            }
                         }
+                        if (countBadge) countBadge.style.display = 'none';
                     }
                 }, 300);
             } else {
@@ -215,17 +256,23 @@ function processMeetings(emails) {
     });
 }
 
-// Render meeting cards
+// Render meeting cards based on current view mode
 function renderMeetingCards() {
     const container = document.getElementById('meeting-cards-container');
     const meetingCountBadge = document.getElementById('meeting-count');
     const completedItems = getCompletedItems();
 
-    // Filter out meetings where all items are completed
+    // Filter meetings based on view mode
     const meetings = Object.values(meetingGroupsData).filter(meeting => {
         if (meeting.items.length === 0) return false;
         const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
-        return completedCount < meeting.items.length; // Only show incomplete meetings
+        const allCompleted = completedCount === meeting.items.length;
+
+        if (currentViewMode === 'todo') {
+            return !allCompleted; // Show incomplete meetings
+        } else {
+            return allCompleted; // Show completed meetings
+        }
     });
 
     // Update meeting count
@@ -234,9 +281,12 @@ function renderMeetingCards() {
     }
 
     if (meetings.length === 0) {
+        const message = currentViewMode === 'todo'
+            ? 'All caught up! No pending action items.'
+            : 'No completed meetings yet.';
         container.innerHTML = `
             <div class="empty-state">
-                <p>All caught up! No pending action items.</p>
+                <p>${message}</p>
             </div>
         `;
         return;
@@ -322,23 +372,26 @@ function renderActionItems(meetingName) {
         countBadge.textContent = `${completedCount}/${meeting.items.length}`;
     }
 
-    const html = meeting.items.map(item => `
-        <div class="action-item ${item.completed ? 'completed' : ''}" data-item-id="${item.id}">
-            <label class="checkbox-container">
-                <input type="checkbox"
-                    data-item-id="${item.id}"
-                    ${item.completed ? 'checked' : ''}
-                    onchange="toggleActionItem('${item.id}')">
-                <span class="checkmark"></span>
-            </label>
-            <div class="action-item-content">
-                <div class="action-item-text">${escapeHtml(item.text)}</div>
-                <div class="action-item-source">
-                    ${item.sourceDate}
+    const html = meeting.items.map(item => {
+        const isCompleted = !!completedItems[item.id];
+        return `
+            <div class="action-item ${isCompleted ? 'completed' : ''}" data-item-id="${item.id}">
+                <label class="checkbox-container">
+                    <input type="checkbox"
+                        data-item-id="${item.id}"
+                        ${isCompleted ? 'checked' : ''}
+                        onchange="toggleActionItem('${item.id}')">
+                    <span class="checkmark"></span>
+                </label>
+                <div class="action-item-content">
+                    <div class="action-item-text">${escapeHtml(item.text)}</div>
+                    <div class="action-item-source">
+                        ${item.sourceDate}
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     container.innerHTML = html;
 }
