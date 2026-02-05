@@ -54,22 +54,57 @@ function updateActionItemUI(itemId, isCompleted) {
     }
 }
 
-// Update meeting card progress display
+// Update meeting card progress display and hide completed meetings
 function updateMeetingCardProgress() {
     const completedItems = getCompletedItems();
 
     Object.keys(meetingGroupsData).forEach(meetingName => {
         const meeting = meetingGroupsData[meetingName];
         const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
+        const allCompleted = completedCount === meeting.items.length && meeting.items.length > 0;
 
         const card = document.querySelector(`.meeting-card[data-meeting="${CSS.escape(meetingName)}"]`);
         if (card) {
-            const progressEl = card.querySelector('.meeting-card-progress');
-            if (progressEl) {
-                progressEl.textContent = `${completedCount}/${meeting.items.length} done`;
+            if (allCompleted) {
+                // Fade out and remove the card
+                card.style.transition = 'all 0.3s ease';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                setTimeout(() => {
+                    card.remove();
+                    updateMeetingCount();
+
+                    // If this was the selected meeting, clear the selection
+                    if (selectedMeeting === meetingName) {
+                        selectedMeeting = null;
+                        const titleEl = document.getElementById('selected-meeting-title');
+                        const countBadge = document.getElementById('action-count');
+                        const actionContainer = document.getElementById('action-items-container');
+
+                        if (titleEl) titleEl.textContent = 'All done! Select another meeting';
+                        if (countBadge) countBadge.style.display = 'none';
+                        if (actionContainer) {
+                            actionContainer.innerHTML = '<div class="empty-state"><p>Great job! All action items completed for this meeting.</p></div>';
+                        }
+                    }
+                }, 300);
+            } else {
+                const progressEl = card.querySelector('.meeting-card-progress');
+                if (progressEl) {
+                    progressEl.textContent = `${completedCount}/${meeting.items.length} done`;
+                }
             }
         }
     });
+}
+
+// Update meeting count badge
+function updateMeetingCount() {
+    const meetingCountBadge = document.getElementById('meeting-count');
+    const remainingCards = document.querySelectorAll('.meeting-card').length;
+    if (meetingCountBadge) {
+        meetingCountBadge.textContent = remainingCards;
+    }
 }
 
 // Initialize dashboard when DOM is loaded
@@ -186,7 +221,12 @@ function renderMeetingCards() {
     const meetingCountBadge = document.getElementById('meeting-count');
     const completedItems = getCompletedItems();
 
-    const meetings = Object.values(meetingGroupsData);
+    // Filter out meetings where all items are completed
+    const meetings = Object.values(meetingGroupsData).filter(meeting => {
+        if (meeting.items.length === 0) return false;
+        const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
+        return completedCount < meeting.items.length; // Only show incomplete meetings
+    });
 
     // Update meeting count
     if (meetingCountBadge) {
@@ -196,7 +236,7 @@ function renderMeetingCards() {
     if (meetings.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <p>No meetings found with action items.</p>
+                <p>All caught up! No pending action items.</p>
             </div>
         `;
         return;
