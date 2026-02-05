@@ -143,10 +143,10 @@ def extract_action_items(body, subject):
 
     # First, try to find the "Suggested next steps" section
     # Look for the section header and extract content after it
+    # Stop at known section boundaries like "Meeting records", "Is the summary", etc.
     next_steps_patterns = [
-        r'Suggested next steps\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
-        r'Suggested next steps\s*:?\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
-        r'Next steps\s*(.*?)(?=\n\n[A-Z]|\n\n\n|Notes by Gemini|\Z)',
+        r'Suggested next steps\s*(.*?)(?=Meeting records|Is the summary|Notes by Gemini|Google LLC|\Z)',
+        r'Next steps\s*(.*?)(?=Meeting records|Is the summary|Notes by Gemini|Google LLC|\Z)',
     ]
 
     next_steps_section = None
@@ -159,36 +159,50 @@ def extract_action_items(body, subject):
             next_steps_section = None
 
     if next_steps_section:
-        # Extract items that start with arrows or bullet points
-        # Common markers: →, -, •, *, etc.
-        # Split by line and look for items starting with arrow
-        lines = next_steps_section.split('\n')
-        current_item = ""
+        # Check if items have arrow/bullet prefixes
+        has_bullets = bool(re.search(r'^[→➜➔⟶►▶\-•*]\s*', next_steps_section, re.MULTILINE))
 
-        for line in lines:
-            line = line.strip()
-            # Check if line starts with an arrow or bullet
-            if re.match(r'^[→➜➔⟶►▶\-•*]\s*', line):
-                # Save previous item if exists
-                if current_item and is_valid_action_item(current_item):
-                    if current_item not in [ai['text'] for ai in action_items]:
+        if has_bullets:
+            # Extract items that start with arrows or bullet points
+            lines = next_steps_section.split('\n')
+            current_item = ""
+
+            for line in lines:
+                line = line.strip()
+                # Check if line starts with an arrow or bullet
+                if re.match(r'^[→➜➔⟶►▶\-•*]\s*', line):
+                    # Save previous item if exists
+                    if current_item and is_valid_action_item(current_item):
+                        if current_item not in [ai['text'] for ai in action_items]:
+                            action_items.append({
+                                'text': current_item,
+                                'source_subject': subject
+                            })
+                    # Start new item
+                    current_item = re.sub(r'^[→➜➔⟶►▶\-•*]\s*', '', line).strip()
+                elif current_item and line:
+                    # Continuation of previous item
+                    current_item += ' ' + line
+
+            # Don't forget the last item
+            if current_item and is_valid_action_item(current_item):
+                if current_item not in [ai['text'] for ai in action_items]:
+                    action_items.append({
+                        'text': current_item,
+                        'source_subject': subject
+                    })
+        else:
+            # No bullet markers - treat each paragraph as an action item
+            # Split by double newlines or treat whole section as one item
+            paragraphs = re.split(r'\n\n+', next_steps_section)
+            for para in paragraphs:
+                item = ' '.join(para.split()).strip()  # Normalize whitespace
+                if is_valid_action_item(item):
+                    if item not in [ai['text'] for ai in action_items]:
                         action_items.append({
-                            'text': current_item,
+                            'text': item,
                             'source_subject': subject
                         })
-                # Start new item
-                current_item = re.sub(r'^[→➜➔⟶►▶\-•*]\s*', '', line).strip()
-            elif current_item and line:
-                # Continuation of previous item
-                current_item += ' ' + line
-
-        # Don't forget the last item
-        if current_item and is_valid_action_item(current_item):
-            if current_item not in [ai['text'] for ai in action_items]:
-                action_items.append({
-                    'text': current_item,
-                    'source_subject': subject
-                })
 
     # If no items found, try looking for arrow items anywhere in the body
     # but ONLY within the first 80% (exclude footer area)
