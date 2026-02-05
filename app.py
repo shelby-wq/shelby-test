@@ -289,6 +289,75 @@ def fetch_gemini_notes_emails():
     return emails, None
 
 
+@app.route('/debug')
+def debug_list():
+    """List all emails with debug links."""
+    emails, error = fetch_gemini_notes_emails()
+    if error:
+        return f"Error: {error}", 400
+
+    html = "<html><body><h1>Emails (click to debug)</h1><ul>"
+    for email in emails:
+        html += f'<li><a href="/debug/{email["id"]}">{email["subject"]}</a> - {len(email["action_items"])} items</li>'
+    html += "</ul></body></html>"
+    return html
+
+
+@app.route('/debug/<email_id>')
+def debug_email(email_id):
+    """Debug endpoint to see raw email content."""
+    service = get_gmail_service()
+    if not service:
+        return "Not authenticated", 401
+
+    msg_data = service.users().messages().get(
+        userId='me',
+        id=email_id,
+        format='full'
+    ).execute()
+
+    body = decode_email_body(msg_data.get('payload', {}))
+
+    # Clean the body for display
+    def clean_html(html_text):
+        text = re.sub(r'<br\s*/?>', '\n', html_text, flags=re.IGNORECASE)
+        text = re.sub(r'</?(div|p|tr|li|h[1-6])[^>]*>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = text.replace('&nbsp;', ' ')
+        text = text.replace('&amp;', '&')
+        text = text.replace('&rarr;', '→')
+        text = text.replace('&#8594;', '→')
+        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        return text.strip()
+
+    clean_body = clean_html(body)
+
+    headers = msg_data.get('payload', {}).get('headers', [])
+    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No subject')
+
+    action_items = extract_action_items(body, subject)
+
+    return f"""
+    <html><head><style>
+    body {{ font-family: monospace; white-space: pre-wrap; padding: 20px; }}
+    h2 {{ color: #333; }}
+    .section {{ background: #f5f5f5; padding: 10px; margin: 10px 0; border: 1px solid #ddd; }}
+    </style></head><body>
+    <h2>Subject: {subject}</h2>
+
+    <h3>Extracted Action Items ({len(action_items)}):</h3>
+    <div class="section">{action_items}</div>
+
+    <h3>Cleaned Body:</h3>
+    <div class="section">{clean_body[:5000]}</div>
+
+    <h3>Raw Body (first 5000 chars):</h3>
+    <div class="section">{body[:5000].replace('<', '&lt;').replace('>', '&gt;')}</div>
+    </body></html>
+    """
+
+
 @app.route('/')
 def index():
     """Main dashboard page."""
