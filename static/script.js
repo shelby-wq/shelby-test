@@ -314,10 +314,7 @@ function renderMeetingCards() {
             <div class="meeting-card ${isActive ? 'active' : ''} ${!hasItems ? 'no-items' : ''}"
                  data-meeting="${escapeHtml(meeting.name)}"
                  onclick="selectMeeting('${escapeAttr(meeting.name)}')">
-                <div class="meeting-card-header">
-                    <div class="meeting-card-avatar">${meeting.name.charAt(0).toUpperCase()}</div>
-                    <div class="meeting-card-title">${escapeHtml(meeting.name)}</div>
-                </div>
+                <div class="meeting-card-title">${escapeHtml(meeting.name)}</div>
                 <div class="meeting-card-footer">
                     <span class="meeting-card-progress">${hasItems ? `${completedCount}/${meeting.items.length} done` : 'No action items'}</span>
                     <span class="meeting-card-count">${meeting.items.length} items</span>
