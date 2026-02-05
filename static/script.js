@@ -1,6 +1,8 @@
 // Gemini Notes Dashboard JavaScript
 
 let emailsData = [];
+let meetingGroupsData = {};
+let selectedMeeting = null;
 
 // Local storage key for completed items
 const COMPLETED_ITEMS_KEY = 'geminiNotes_completedItems';
@@ -26,7 +28,7 @@ function toggleActionItem(itemId) {
     }
     saveCompletedItems(completedItems);
     updateActionItemUI(itemId, completedItems[itemId]);
-    updateProgressCounts();
+    updateMeetingCardProgress();
 }
 
 // Update UI for a single action item
@@ -39,61 +41,58 @@ function updateActionItemUI(itemId, isCompleted) {
     if (actionItem) {
         actionItem.classList.toggle('completed', isCompleted);
     }
+
+    // Update the action count badge
+    if (selectedMeeting && meetingGroupsData[selectedMeeting]) {
+        const meeting = meetingGroupsData[selectedMeeting];
+        const completedItems = getCompletedItems();
+        const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
+        const countBadge = document.getElementById('action-count');
+        if (countBadge) {
+            countBadge.textContent = `${completedCount}/${meeting.items.length}`;
+        }
+    }
 }
 
-// Update progress counts for each account
-function updateProgressCounts() {
+// Update meeting card progress display
+function updateMeetingCardProgress() {
     const completedItems = getCompletedItems();
-    const accountGroups = document.querySelectorAll('.account-group');
 
-    accountGroups.forEach(group => {
-        const items = group.querySelectorAll('.action-item');
-        const completedCount = Array.from(items).filter(item => {
-            const checkbox = item.querySelector('input[type="checkbox"]');
-            return checkbox?.checked;
-        }).length;
+    Object.keys(meetingGroupsData).forEach(meetingName => {
+        const meeting = meetingGroupsData[meetingName];
+        const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
 
-        const progressSpan = group.querySelector('.account-progress');
-        if (progressSpan) {
-            progressSpan.textContent = `${completedCount}/${items.length} done`;
+        const card = document.querySelector(`.meeting-card[data-meeting="${CSS.escape(meetingName)}"]`);
+        if (card) {
+            const progressEl = card.querySelector('.meeting-card-progress');
+            if (progressEl) {
+                progressEl.textContent = `${completedCount}/${meeting.items.length} done`;
+            }
         }
     });
-
-    // Update total count
-    const totalItems = document.querySelectorAll('.action-item').length;
-    const totalCompleted = Object.keys(completedItems).length;
-    const countBadge = document.getElementById('action-count');
-    if (countBadge) {
-        countBadge.textContent = `${totalCompleted}/${totalItems}`;
-    }
 }
 
 // Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     const refreshBtn = document.getElementById('refresh-btn');
-    const sortSelect = document.getElementById('sort-select');
 
     if (refreshBtn) {
         refreshBtn.addEventListener('click', fetchEmails);
     }
 
-    if (sortSelect) {
-        sortSelect.addEventListener('change', () => sortAndRenderEmails());
-    }
-
     // Initial fetch
-    if (document.getElementById('emails-container')) {
+    if (document.getElementById('meeting-cards-container')) {
         fetchEmails();
     }
 });
 
 // Fetch emails from API
 async function fetchEmails() {
-    const emailsContainer = document.getElementById('emails-container');
+    const meetingCardsContainer = document.getElementById('meeting-cards-container');
     const actionItemsContainer = document.getElementById('action-items-container');
 
-    emailsContainer.innerHTML = '<div class="loading">Loading emails</div>';
-    actionItemsContainer.innerHTML = '<div class="loading">Loading action items</div>';
+    meetingCardsContainer.innerHTML = '<div class="loading">Loading meetings</div>';
+    actionItemsContainer.innerHTML = '<div class="empty-state"><p>Click on a meeting card above to view its action items.</p></div>';
 
     try {
         const response = await fetch('/api/emails');
@@ -109,84 +108,17 @@ async function fetchEmails() {
 
         emailsData = data.emails || [];
 
-        // Show warning if any
-        let warningHtml = '';
-        if (data.warning) {
-            warningHtml = `<div class="warning">${data.warning}</div>`;
-        }
-
-        // Render emails
-        sortAndRenderEmails(warningHtml);
-
-        // Render action items grouped by account
-        renderActionItemsByAccount(emailsData);
+        // Process and render meeting cards
+        processMeetings(emailsData);
+        renderMeetingCards();
 
     } catch (error) {
-        emailsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-        actionItemsContainer.innerHTML = `<div class="error">Error loading action items</div>`;
+        meetingCardsContainer.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        actionItemsContainer.innerHTML = `<div class="error">Error loading data</div>`;
     }
-}
-
-// Sort and render emails
-function sortAndRenderEmails(warningHtml = '') {
-    const container = document.getElementById('emails-container');
-    const sortSelect = document.getElementById('sort-select');
-    const sortValue = sortSelect ? sortSelect.value : 'date-desc';
-
-    // Sort emails
-    const sortedEmails = [...emailsData].sort((a, b) => {
-        switch (sortValue) {
-            case 'date-desc':
-                return new Date(b.date_sortable) - new Date(a.date_sortable);
-            case 'date-asc':
-                return new Date(a.date_sortable) - new Date(b.date_sortable);
-            case 'title-asc':
-                return a.subject.localeCompare(b.subject);
-            case 'title-desc':
-                return b.subject.localeCompare(a.subject);
-            default:
-                return 0;
-        }
-    });
-
-    if (sortedEmails.length === 0) {
-        container.innerHTML = warningHtml + `
-            <div class="empty-state">
-                <p>No emails found with the "Gemini Notes" label.</p>
-                <p>Make sure you have emails labeled "Gemini Notes" in your Gmail.</p>
-            </div>
-        `;
-        return;
-    }
-
-    const emailsHtml = sortedEmails.map(email => `
-        <div class="email-card" data-id="${email.id}">
-            <div class="email-header">
-                <div class="email-subject">${escapeHtml(email.subject)}</div>
-                <div class="email-date">${email.date}</div>
-            </div>
-            <div class="email-sender">${escapeHtml(email.sender)}</div>
-            <div class="email-snippet">${escapeHtml(email.snippet)}</div>
-            ${email.action_items.length > 0 ? `
-                <div class="email-actions">
-                    ${email.action_items.slice(0, 3).map(item => `
-                        <span class="email-action-tag" title="${escapeHtml(item.text)}">
-                            ${escapeHtml(truncate(item.text, 50))}
-                        </span>
-                    `).join('')}
-                    ${email.action_items.length > 3 ? `
-                        <span class="email-action-tag">+${email.action_items.length - 3} more</span>
-                    ` : ''}
-                </div>
-            ` : ''}
-        </div>
-    `).join('');
-
-    container.innerHTML = warningHtml + emailsHtml;
 }
 
 // Extract meeting title from email subject
-// e.g., 'Notes: "MWC / Shelby" Feb 4, 2026' -> 'MWC / Shelby'
 function extractMeetingTitle(subject) {
     // Try to extract title from quotes
     const quoteMatch = subject.match(/[""]([^""]+)[""]/);
@@ -218,21 +150,16 @@ function hashCode(str) {
     return Math.abs(hash).toString(36);
 }
 
-// Render action items grouped by meeting title
-function renderActionItemsByAccount(emails) {
-    const container = document.getElementById('action-items-container');
-    const countBadge = document.getElementById('action-count');
+// Process emails into meeting groups
+function processMeetings(emails) {
     const completedItems = getCompletedItems();
-
-    // Group action items by meeting title
-    const meetingGroups = {};
-    let totalItems = 0;
+    meetingGroupsData = {};
 
     emails.forEach(email => {
         const meetingTitle = extractMeetingTitle(email.subject);
 
-        if (!meetingGroups[meetingTitle]) {
-            meetingGroups[meetingTitle] = {
+        if (!meetingGroupsData[meetingTitle]) {
+            meetingGroupsData[meetingTitle] = {
                 name: meetingTitle,
                 date: email.date,
                 items: []
@@ -241,7 +168,7 @@ function renderActionItemsByAccount(emails) {
 
         email.action_items.forEach(item => {
             const itemId = generateItemId(email.id, item.text);
-            meetingGroups[meetingTitle].items.push({
+            meetingGroupsData[meetingTitle].items.push({
                 id: itemId,
                 text: item.text,
                 sourceSubject: email.subject,
@@ -249,65 +176,129 @@ function renderActionItemsByAccount(emails) {
                 emailId: email.id,
                 completed: !!completedItems[itemId]
             });
-            totalItems++;
         });
     });
+}
 
-    // Update count badge
-    const completedCount = Object.keys(completedItems).length;
-    if (countBadge) {
-        countBadge.textContent = `${completedCount}/${totalItems}`;
+// Render meeting cards
+function renderMeetingCards() {
+    const container = document.getElementById('meeting-cards-container');
+    const meetingCountBadge = document.getElementById('meeting-count');
+    const completedItems = getCompletedItems();
+
+    const meetings = Object.values(meetingGroupsData);
+
+    // Update meeting count
+    if (meetingCountBadge) {
+        meetingCountBadge.textContent = meetings.length;
     }
 
-    // Check if no action items
-    if (totalItems === 0) {
+    if (meetings.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <p>No action items found.</p>
-                <p>Action items are extracted from bullet points, numbered lists, and task-related keywords.</p>
+                <p>No meetings found with action items.</p>
             </div>
         `;
         return;
     }
 
     // Sort meetings by number of items (descending)
-    const sortedMeetings = Object.values(meetingGroups).sort((a, b) => b.items.length - a.items.length);
+    meetings.sort((a, b) => b.items.length - a.items.length);
 
-    // Render grouped action items
-    const html = sortedMeetings.map(meeting => {
-        const completedInGroup = meeting.items.filter(item => item.completed).length;
+    const html = meetings.map(meeting => {
+        const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
+        const isActive = selectedMeeting === meeting.name;
 
         return `
-            <div class="account-group">
-                <div class="account-header">
-                    <div class="account-info">
-                        <span class="account-avatar">${meeting.name.charAt(0).toUpperCase()}</span>
-                        <span class="account-name">${escapeHtml(meeting.name)}</span>
-                    </div>
-                    <span class="account-progress">${completedInGroup}/${meeting.items.length} done</span>
+            <div class="meeting-card ${isActive ? 'active' : ''}"
+                 data-meeting="${escapeHtml(meeting.name)}"
+                 onclick="selectMeeting('${escapeAttr(meeting.name)}')">
+                <div class="meeting-card-header">
+                    <div class="meeting-card-avatar">${meeting.name.charAt(0).toUpperCase()}</div>
+                    <div class="meeting-card-title">${escapeHtml(meeting.name)}</div>
                 </div>
-                <div class="account-items">
-                    ${meeting.items.map(item => `
-                        <div class="action-item ${item.completed ? 'completed' : ''}" data-item-id="${item.id}">
-                            <label class="checkbox-container">
-                                <input type="checkbox"
-                                    data-item-id="${item.id}"
-                                    ${item.completed ? 'checked' : ''}
-                                    onchange="toggleActionItem('${item.id}')">
-                                <span class="checkmark"></span>
-                            </label>
-                            <div class="action-item-content">
-                                <div class="action-item-text">${escapeHtml(item.text)}</div>
-                                <div class="action-item-source">
-                                    ${item.sourceDate}
-                                </div>
-                            </div>
-                        </div>
-                    `).join('')}
+                <div class="meeting-card-footer">
+                    <span class="meeting-card-progress">${completedCount}/${meeting.items.length} done</span>
+                    <span class="meeting-card-count">${meeting.items.length} items</span>
                 </div>
             </div>
         `;
     }).join('');
+
+    container.innerHTML = html;
+}
+
+// Select a meeting and show its action items
+function selectMeeting(meetingName) {
+    selectedMeeting = meetingName;
+
+    // Update card active states
+    document.querySelectorAll('.meeting-card').forEach(card => {
+        card.classList.remove('active');
+        if (card.dataset.meeting === meetingName) {
+            card.classList.add('active');
+        }
+    });
+
+    // Update title
+    const titleEl = document.getElementById('selected-meeting-title');
+    if (titleEl) {
+        titleEl.textContent = meetingName;
+    }
+
+    // Show action count badge
+    const countBadge = document.getElementById('action-count');
+    if (countBadge) {
+        countBadge.style.display = 'inline-block';
+    }
+
+    // Render action items for selected meeting
+    renderActionItems(meetingName);
+}
+
+// Render action items for a specific meeting
+function renderActionItems(meetingName) {
+    const container = document.getElementById('action-items-container');
+    const countBadge = document.getElementById('action-count');
+    const completedItems = getCompletedItems();
+
+    const meeting = meetingGroupsData[meetingName];
+
+    if (!meeting || meeting.items.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <p>No action items found for this meeting.</p>
+            </div>
+        `;
+        if (countBadge) {
+            countBadge.textContent = '0';
+        }
+        return;
+    }
+
+    // Update count badge
+    const completedCount = meeting.items.filter(item => completedItems[item.id]).length;
+    if (countBadge) {
+        countBadge.textContent = `${completedCount}/${meeting.items.length}`;
+    }
+
+    const html = meeting.items.map(item => `
+        <div class="action-item ${item.completed ? 'completed' : ''}" data-item-id="${item.id}">
+            <label class="checkbox-container">
+                <input type="checkbox"
+                    data-item-id="${item.id}"
+                    ${item.completed ? 'checked' : ''}
+                    onchange="toggleActionItem('${item.id}')">
+                <span class="checkmark"></span>
+            </label>
+            <div class="action-item-content">
+                <div class="action-item-text">${escapeHtml(item.text)}</div>
+                <div class="action-item-source">
+                    ${item.sourceDate}
+                </div>
+            </div>
+        </div>
+    `).join('');
 
     container.innerHTML = html;
 }
@@ -317,6 +308,11 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Utility: Escape for attribute
+function escapeAttr(text) {
+    return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
 }
 
 // Utility: Truncate text

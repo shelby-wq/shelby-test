@@ -31,33 +31,27 @@
         </div>
         {% else %}
         <div class="dashboard-content">
-            <!-- Action Items Section -->
-            <section class="action-items-section">
+            <!-- Meeting Cards Row -->
+            <section class="meeting-cards-section">
                 <div class="section-header">
-                    <h2>Action Items</h2>
-                    <span class="badge" id="action-count">0</span>
+                    <h2>Meetings</h2>
+                    <span class="badge" id="meeting-count">0</span>
                 </div>
-                <div class="action-items-list" id="action-items-container">
-                    <div class="loading">Loading action items...</div>
+                <div class="meeting-cards-row" id="meeting-cards-container">
+                    <div class="loading">Loading meetings...</div>
                 </div>
             </section>
 
-            <!-- Emails Section -->
-            <section class="emails-section">
+            <!-- Action Items Section (shown when meeting selected) -->
+            <section class="action-items-section" id="action-items-section">
                 <div class="section-header">
-                    <h2>Gemini Notes Emails</h2>
-                    <div class="sort-controls">
-                        <label for="sort-select">Sort by:</label>
-                        <select id="sort-select">
-                            <option value="date-desc">Date (Newest First)</option>
-                            <option value="date-asc">Date (Oldest First)</option>
-                            <option value="title-asc">Title (A-Z)</option>
-                            <option value="title-desc">Title (Z-A)</option>
-                        </select>
-                    </div>
+                    <h2 id="selected-meeting-title">Select a meeting above</h2>
+                    <span class="badge" id="action-count" style="display: none;">0</span>
                 </div>
-                <div class="emails-list" id="emails-container">
-                    <div class="loading">Loading emails...</div>
+                <div class="action-items-list" id="action-items-container">
+                    <div class="empty-state">
+                        <p>Click on a meeting card above to view its action items.</p>
+                    </div>
                 </div>
             </section>
         </div>
