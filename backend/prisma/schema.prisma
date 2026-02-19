@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth & Organization ───────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  // A2P campaign metadata for compliant messaging
+  a2pBrand      String?
+  a2pCampaignId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  leads Lead[]
+  settings OrganizationSetting[]
+}
+
+model OrganizationSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  value          String
+
+  @@unique([organizationId, key])
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String?
+  name           String
+  role           UserRole     @default(MEMBER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  communications    Communication[]
+  enrichmentRequests EnrichmentRequest[]
+  imports           ImportJob[]
+  auditLogs         AuditLog[]
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+// ─── Leads ─────────────────────────────────────────────────
+
+model Lead {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  ownerName       String
+  propertyAddress String
+  mailingAddress  String?
+  city            String?
+  state           String?
+  zip             String?
+  parcelId        String?
+
+  status          LeadStatus   @default(NEW)
+  notes           String?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  lastTouchedAt   DateTime?
+
+  tags              LeadTag[]
+  contactPoints     ContactPoint[]
+  communications    Communication[]
+  enrichmentRequests EnrichmentRequest[]
+
+  importJobId     String?
+  importJob       ImportJob?   @relation(fields: [importJobId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([organizationId, propertyAddress, zip])
+  @@index([organizationId, parcelId])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  NEGOTIATING
+  UNDER_CONTRACT
+  DEAD
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  color String?
+  leads LeadTag[]
+}
+
+model LeadTag {
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, tagId])
+}
+
+// ─── Contact Points ────────────────────────────────────────
+
+model ContactPoint {
+  id            String        @id @default(cuid())
+  leadId        String
+  lead          Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  type          ContactType
+  value         String
+  source        String        // e.g., "import", "manual", provider name
+  confidenceScore Float?
+  consentStatus ConsentStatus @default(UNKNOWN)
+  dncFlag       Boolean       @default(false)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([leadId])
+}
+
+enum ContactType {
+  PHONE
+  EMAIL
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  UNKNOWN
+}
+
+// ─── Enrichment ────────────────────────────────────────────
+
+model EnrichmentRequest {
+  id                 String             @id @default(cuid())
+  leadId             String
+  lead               Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  provider           String
+  permissiblePurpose String             // User-attested lawful basis
+  requestedById      String
+  requestedBy        User               @relation(fields: [requestedById], references: [id])
+  requestedAt        DateTime           @default(now())
+
+  status             EnrichmentStatus   @default(PENDING)
+  costCents          Int?
+  rawResponseJson    Json?
+
+  completedAt        DateTime?
+
+  @@index([leadId])
+}
+
+enum EnrichmentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Communications ────────────────────────────────────────
+
+model Communication {
+  id        String             @id @default(cuid())
+  leadId    String
+  lead      Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  channel   CommunicationChannel
+  direction CommunicationDirection
+  body      String?
+  summary   String?
+  outcome   String?
+  timestamp DateTime           @default(now())
+
+  userId    String
+  user      User               @relation(fields: [userId], references: [id])
+
+  @@index([leadId])
+}
+
+enum CommunicationChannel {
+  CALL
+  SMS
+  EMAIL
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// ─── Import Jobs ───────────────────────────────────────────
+
+model ImportJob {
+  id              String       @id @default(cuid())
+  organizationId  String
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+
+  fileName        String
+  status          ImportStatus @default(PENDING)
+  columnMapping   Json?        // { csvColumn: dbField }
+
+  totalRows       Int          @default(0)
+  insertedCount   Int          @default(0)
+  updatedCount    Int          @default(0)
+  duplicateCount  Int          @default(0)
+  errorCount      Int          @default(0)
+  errors          Json?        // Array of { row, field, message }
+
+  createdAt       DateTime     @default(now())
+  completedAt     DateTime?
+
+  leads           Lead[]
+}
+
+enum ImportStatus {
+  PENDING
+  MAPPING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Audit Log ─────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String   // e.g., "lead.status_change", "enrichment.request", "import.start"
+  entity    String   // e.g., "Lead", "EnrichmentRequest"
+  entityId  String?
+  before    Json?
+  after     Json?
+  metadata  Json?
+  timestamp DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([timestamp])
+}
