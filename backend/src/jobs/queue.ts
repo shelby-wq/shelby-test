@@ -20,6 +20,10 @@ export const importQueue = new Queue("import", {
   connection: { url: config.REDIS_URL },
 });
 
+export const skiptraceQueue = new Queue("skiptrace", {
+  connection: { url: config.REDIS_URL },
+});
+
 export interface EnrichmentJobData {
   enrichmentRequestId: string;
   leadId: string;
@@ -30,6 +34,12 @@ export interface ImportJobData {
   importJobId: string;
   filePath: string;
   mapping: Record<string, string>;
+  organizationId: string;
+  userId: string;
+}
+
+export interface SkiptraceJobData {
+  skiptraceJobId: string;
   organizationId: string;
   userId: string;
 }

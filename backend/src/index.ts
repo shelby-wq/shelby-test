@@ -13,6 +13,7 @@ import communicationRoutes from "./routes/communications";
 import dashboardRoutes from "./routes/dashboard";
 import settingsRoutes from "./routes/settings";
 import contactPointRoutes from "./routes/contact-points";
+import skiptraceRoutes from "./routes/skiptrace";
 import { authMiddleware } from "./middleware/auth";
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/communications", communicationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/contact-points", contactPointRoutes);
+app.use("/api/skiptrace", skiptraceRoutes);
 
 // Global error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

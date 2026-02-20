@@ -167,6 +167,34 @@ class ApiClient {
     return this.request<any>(`/contact-points/${id}`, { method: "PATCH", body: JSON.stringify(data) });
   }
 
+  // Skiptrace
+  skiptraceEstimate(data: { leadIds?: string[]; filters?: { status?: string; city?: string; tag?: string } }) {
+    return this.request<{
+      totalLeads: number;
+      leadsWithPhones: number;
+      leadsToSkiptrace: number;
+      costPerLookupCents: number;
+      estimatedCostCents: number;
+    }>("/skiptrace/estimate", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  skiptraceStart(data: {
+    leadIds?: string[];
+    filters?: { status?: string; city?: string; tag?: string };
+    permissiblePurpose: string;
+    confirmLawfulBasis: true;
+  }) {
+    return this.request<any>("/skiptrace/start", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  getSkiptraceJob(id: string) {
+    return this.request<any>(`/skiptrace/${id}`);
+  }
+
+  getSkiptraceJobs() {
+    return this.request<any[]>("/skiptrace");
+  }
+
   // Settings
   getSettings() {
     return this.request<any>("/settings");

@@ -49,6 +49,7 @@ model User {
   communications    Communication[]
   enrichmentRequests EnrichmentRequest[]
   imports           ImportJob[]
+  skiptraceJobs     SkiptraceJob[]
   auditLogs         AuditLog[]
 }
 
@@ -235,6 +236,37 @@ model ImportJob {
 enum ImportStatus {
   PENDING
   MAPPING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Skiptrace Jobs ───────────────────────────────────────
+
+model SkiptraceJob {
+  id              String          @id @default(cuid())
+  organizationId  String
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+
+  status          SkiptraceStatus @default(PENDING)
+  permissiblePurpose String
+
+  leadIds         Json            // Array of lead IDs to process
+  totalLeads      Int             @default(0)
+  processedCount  Int             @default(0)
+  foundCount      Int             @default(0)
+  alreadyHadCount Int             @default(0)
+  errorCount      Int             @default(0)
+  costCents       Int             @default(0)
+  errors          Json?           // Array of { leadId, ownerName, message }
+
+  createdAt       DateTime        @default(now())
+  completedAt     DateTime?
+}
+
+enum SkiptraceStatus {
+  PENDING
   PROCESSING
   COMPLETED
   FAILED
