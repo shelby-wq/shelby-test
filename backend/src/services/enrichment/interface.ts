@@ -5,6 +5,14 @@
  * Results are stored with full audit trail including permissible purpose.
  */
 
+export interface LeadInput {
+  ownerName: string;
+  propertyAddress: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
 export interface EnrichmentResult {
   phones: Array<{ value: string; confidence: number }>;
   emails: Array<{ value: string; confidence: number }>;
@@ -14,11 +22,16 @@ export interface EnrichmentResult {
 
 export interface EnrichmentProvider {
   name: string;
-  requestEnrichment(lead: {
-    ownerName: string;
-    propertyAddress: string;
-    city?: string;
-    state?: string;
-    zip?: string;
-  }): Promise<EnrichmentResult>;
+  requestEnrichment(lead: LeadInput): Promise<EnrichmentResult>;
+}
+
+/**
+ * Batch enrichment provider for services that process multiple leads at once.
+ * Providers like Tracerfy accept a CSV upload and return all results in one batch.
+ */
+export interface BatchEnrichmentProvider extends EnrichmentProvider {
+  supportsBatch: true;
+  requestBatchEnrichment(
+    leads: Array<{ id: string } & LeadInput>
+  ): Promise<Map<string, EnrichmentResult>>;
 }

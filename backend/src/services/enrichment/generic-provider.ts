@@ -50,7 +50,7 @@ export class GenericEnrichmentProvider implements EnrichmentProvider {
       throw new Error(`Enrichment provider returned ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
 
     // Map provider response to our standard format
     // Adjust this mapping based on the actual provider's response schema
